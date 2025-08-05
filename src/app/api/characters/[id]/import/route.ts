@@ -1,98 +1,102 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/nextauth';
 import { PrismaClient } from '@prisma/client';
-import fs from 'fs/promises';
-import path from 'path';
 
 const prisma = new PrismaClient();
 
-// POST: JSONデータを使用してキャラクター情報を上書き（インポート）する
-export async function POST(request: Request, { params }: { params: { id: string } }) {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-        return NextResponse.json({ error: '認証されていません。' }, { status: 401 });
+// ✅ anyの代わりに、インポートされる画像の具体的な型を定義しました
+interface SourceImage {
+  imageUrl: string;
+  keyword?: string;
+  isMain: boolean;
+  displayOrder: number;
+}
+
+/**
+ * POST: 既存のキャラクターに、別のキャラクターの情報を上書き（インポート）します。
+ * Vercel環境で動作するように、物理的なファイル操作をなくし、
+ * データベース操作のみで完結するようにロジックを修正しました。
+ */
+export async function POST(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: '認証されていません。' }, { status: 401 });
+  }
+
+  const targetCharacterId = parseInt(params.id, 10);
+  const userId = parseInt(session.user.id, 10);
+
+  if (isNaN(targetCharacterId)) {
+    return NextResponse.json({ error: '無効なキャラクターIDです。' }, { status: 400 });
+  }
+
+  try {
+    const sourceCharacterData = await request.json();
+
+    // インポート先のキャラクターが存在し、本人のものであるか確認
+    const targetCharacter = await prisma.characters.findFirst({
+      where: { id: targetCharacterId, author_id: userId },
+    });
+
+    if (!targetCharacter) {
+      return NextResponse.json({ error: 'インポート先のキャラクターが見つからないか、権限がありません。' }, { status: 404 });
     }
+    
+    const updatedCharacter = await prisma.$transaction(async (tx) => {
+      // 1. インポート先の既存画像をDBから全て削除
+      await tx.character_images.deleteMany({ where: { characterId: targetCharacterId } });
 
-    const targetCharacterId = parseInt(params.id, 10);
-    const userId = parseInt(session.user.id, 10);
-
-    try {
-        // インポートするデータをJSON形式で受け取る
-        const sourceCharacterData = await request.json();
-
-        // インポート先のキャラクターが存在し、本人のものであるか確認
-        const targetCharacter = await prisma.characters.findFirst({
-            where: { id: targetCharacterId, author_id: userId }
-        });
-
-        if (!targetCharacter) {
-            return NextResponse.json({ error: 'インポート先のキャラクターが見つからないか、権限がありません。' }, { status: 404 });
-        }
+      // 2. ソースの画像情報を元に、新しい画像レコードを作成
+      // (物理的なファイルコピーではなく、同じURLを参照するレコードを新規作成)
+      if (sourceCharacterData.characterImages && Array.isArray(sourceCharacterData.characterImages)) {
+        // ✅ imgの型をanyからSourceImageに変更しました
+        const newImageMetas = sourceCharacterData.characterImages.map((img: SourceImage) => ({
+          characterId: targetCharacterId,
+          imageUrl: img.imageUrl,
+          keyword: img.keyword || '',
+          isMain: img.isMain,
+          displayOrder: img.displayOrder,
+        }));
         
-        const updatedCharacter = await prisma.$transaction(async (tx) => {
-            // 1. インポート先の既存画像をDBとファイルシステムから全て削除
-            const oldImages = await tx.character_images.findMany({ where: { characterId: targetCharacterId } });
-            for (const img of oldImages) {
-                const oldPath = path.join(process.cwd(), 'public', img.imageUrl);
-                try {
-                    await fs.unlink(oldPath);
-                } catch (e) { console.error(`古いファイルの削除に失敗: ${oldPath}`, e); }
-            }
-            await tx.character_images.deleteMany({ where: { characterId: targetCharacterId } });
-
-            // 2. ソースの画像を物理的に新しいファイルとしてコピーして作成
-            const newImageMetas = [];
-            if (sourceCharacterData.characterImages && Array.isArray(sourceCharacterData.characterImages)) {
-                for (const img of sourceCharacterData.characterImages) {
-                    const sourcePath = path.join(process.cwd(), 'public', img.imageUrl);
-                    const newFilename = `${Date.now()}-${path.basename(img.imageUrl)}`;
-                    const newSavePath = path.join(process.cwd(), 'public/uploads', newFilename);
-                    
-                    try {
-                        await fs.copyFile(sourcePath, newSavePath);
-                        newImageMetas.push({
-                            characterId: targetCharacterId,
-                            imageUrl: `/uploads/${newFilename}`,
-                            keyword: img.keyword || '',
-                            isMain: img.isMain,
-                            displayOrder: img.displayOrder,
-                        });
-                    } catch (e) { console.error(`ファイルのコピーに失敗: ${sourcePath}`, e); }
-                }
-            }
-            if (newImageMetas.length > 0) {
-                await tx.character_images.createMany({ data: newImageMetas });
-            }
-
-            // 3. テキスト情報を更新
-            // ✅ ESLintエラーを回避するため、更新に必要なデータだけを明示的に抽出する方式に変更
-            const dataToUpdate = {
-                name: sourceCharacterData.name,
-                description: sourceCharacterData.description,
-                systemTemplate: sourceCharacterData.systemTemplate,
-                firstSituation: sourceCharacterData.firstSituation,
-                firstMessage: sourceCharacterData.firstMessage,
-                visibility: sourceCharacterData.visibility,
-                safetyFilter: sourceCharacterData.safetyFilter,
-                category: sourceCharacterData.category,
-                hashtags: sourceCharacterData.hashtags,
-                detailSetting: sourceCharacterData.detailSetting,
-            };
-            
-            return await tx.characters.update({
-                where: { id: targetCharacterId },
-                data: dataToUpdate
-            });
-        });
-
-        return NextResponse.json(updatedCharacter);
-
-    } catch (error) {
-        console.error('キャラクターのインポートエラー:', error);
-        if (error instanceof SyntaxError) {
-            return NextResponse.json({ error: '無効なJSONデータです。' }, { status: 400 });
+        if (newImageMetas.length > 0) {
+          await tx.character_images.createMany({ data: newImageMetas });
         }
-        return NextResponse.json({ error: 'サーバーエラーが発生しました。' }, { status: 500 });
+      }
+
+      // 3. テキスト情報を更新
+      const dataToUpdate = {
+        name: sourceCharacterData.name,
+        description: sourceCharacterData.description,
+        systemTemplate: sourceCharacterData.systemTemplate,
+        firstSituation: sourceCharacterData.firstSituation,
+        firstMessage: sourceCharacterData.firstMessage,
+        visibility: sourceCharacterData.visibility,
+        safetyFilter: sourceCharacterData.safetyFilter,
+        category: sourceCharacterData.category,
+        hashtags: sourceCharacterData.hashtags,
+        detailSetting: sourceCharacterData.detailSetting,
+      };
+      
+      return await tx.characters.update({
+        where: { id: targetCharacterId },
+        data: dataToUpdate,
+        include: {
+            characterImages: true // 更新後の画像情報も返す
+        }
+      });
+    });
+
+    return NextResponse.json(updatedCharacter);
+
+  } catch (error) {
+    console.error('キャラクターのインポートエラー:', error);
+    if (error instanceof SyntaxError) {
+      return NextResponse.json({ error: '無効なJSONデータです。' }, { status: 400 });
     }
+    return NextResponse.json({ error: 'サーバーエラーが発生しました。' }, { status: 500 });
+  }
 }
