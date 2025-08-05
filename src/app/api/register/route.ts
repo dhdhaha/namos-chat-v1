@@ -49,14 +49,26 @@ export async function POST(req: Request) {
     // パスワードをハッシュ化して保存
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // ✅ ユーザーとポイントレコードを同時に作成
     const newUser = await prisma.users.create({
       data: {
         email,
         password: hashedPassword,
         name,
         phone,
-        nickname
-      }
+        nickname,
+        // 👇 ユーザーを作成する際に、関連するpointsレコードも一緒に作成するという意味です
+        points: {
+          create: {
+            // free_pointsとpaid_pointsはスキーマでdefault(0)に設定されているため、
+            // 空にしておくと自動的に0で生成されます。
+          },
+        },
+      },
+      // 生成されたユーザー情報にpoints情報も含めて返却します（任意）
+      include: {
+        points: true,
+      },
     });
 
     // 成功レスポンスをJSONで返却
