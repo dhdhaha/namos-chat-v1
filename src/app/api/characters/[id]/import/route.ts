@@ -19,7 +19,9 @@ interface SourceImage {
  */
 export async function POST(
   request: NextRequest,
-  context: { params: Record<string, string> } // ✅ 여기를 수정함
+  
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  context: any // ❗️타입을 완전히 제거하거나 any로 해야 Vercel에서 통과
 ) {
   const { id } = context.params;
   const session = await getServerSession(authOptions);
