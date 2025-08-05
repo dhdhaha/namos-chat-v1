@@ -12,15 +12,18 @@ interface SourceImage {
   displayOrder: number;
 }
 
-/**
- * GET: キャラクター詳細取得
- */
-// @ts-expect-error -- context 타입 선언은 Vercel에서 금지됨
-export async function GET(request: Request, context) {
-  const { id } = (context as { params: { id: string } }).params;
-  const characterId = parseInt(id, 10);
+// ✅ [id]를 URL에서 직접 파싱
+function extractIdFromRequest(request: Request): number | null {
+  const url = new URL(request.url);
+  const id = url.pathname.split('/').filter(Boolean).pop();
+  if (!id) return null;
+  const parsed = parseInt(id, 10);
+  return isNaN(parsed) ? null : parsed;
+}
 
-  if (isNaN(characterId)) {
+export async function GET(request: Request) {
+  const characterId = extractIdFromRequest(request);
+  if (characterId === null) {
     return NextResponse.json({ error: '無効なキャラクターIDです。' }, { status: 400 });
   }
 
@@ -38,29 +41,23 @@ export async function GET(request: Request, context) {
   return NextResponse.json(character);
 }
 
-/**
- * POST: キャラクターインポート
- */
-// @ts-expect-error -- context 타입 선언은 Vercelで 금지됨
-export async function POST(request: Request, context) {
-  const { id } = (context as { params: { id: string } }).params;
+export async function POST(request: Request) {
+  const characterId = extractIdFromRequest(request);
+  if (characterId === null) {
+    return NextResponse.json({ error: '無効なキャラクターIDです。' }, { status: 400 });
+  }
+
   const session = await getServerSession(authOptions);
 
   if (!session?.user?.id) {
     return NextResponse.json({ error: '認証されていません。' }, { status: 401 });
   }
 
-  const targetCharacterId = parseInt(id, 10);
   const userId = parseInt(session.user.id, 10);
-
-  if (isNaN(targetCharacterId)) {
-    return NextResponse.json({ error: '無効なキャラクターIDです。' }, { status: 400 });
-  }
-
   const sourceCharacterData = await request.json();
 
   const targetCharacter = await prisma.characters.findFirst({
-    where: { id: targetCharacterId, author_id: userId },
+    where: { id: characterId, author_id: userId },
   });
 
   if (!targetCharacter) {
@@ -68,11 +65,11 @@ export async function POST(request: Request, context) {
   }
 
   const updatedCharacter = await prisma.$transaction(async (tx) => {
-    await tx.character_images.deleteMany({ where: { characterId: targetCharacterId } });
+    await tx.character_images.deleteMany({ where: { characterId } });
 
-    if (sourceCharacterData.characterImages && Array.isArray(sourceCharacterData.characterImages)) {
+    if (Array.isArray(sourceCharacterData.characterImages)) {
       const newImageMetas = (sourceCharacterData.characterImages as SourceImage[]).map((img) => ({
-        characterId: targetCharacterId,
+        characterId,
         imageUrl: img.imageUrl,
         keyword: img.keyword || '',
         isMain: img.isMain,
@@ -98,7 +95,7 @@ export async function POST(request: Request, context) {
     };
 
     return await tx.characters.update({
-      where: { id: targetCharacterId },
+      where: { id: characterId },
       data: dataToUpdate,
       include: {
         characterImages: true,
