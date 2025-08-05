@@ -13,19 +13,50 @@ interface SourceImage {
 }
 
 /**
+ * GET: 単一キャラクターの詳細を取得するエンドポイント。
+ */
+export async function GET(
+  request: NextRequest,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  context: any
+) {
+  const { id } = context.params;
+  const characterId = parseInt(id, 10);
+
+  if (isNaN(characterId)) {
+    return NextResponse.json({ error: '無効なキャラクターIDです。' }, { status: 400 });
+  }
+
+  try {
+    const character = await prisma.characters.findUnique({
+      where: { id: characterId },
+      include: {
+        characterImages: true,
+      },
+    });
+
+    if (!character) {
+      return NextResponse.json({ error: 'キャラクターが見つかりません。' }, { status: 404 });
+    }
+
+    return NextResponse.json(character);
+  } catch (error) {
+    console.error('キャラクター取得エラー:', error);
+    return NextResponse.json({ error: 'サーバーエラーが発生しました。' }, { status: 500 });
+  }
+}
+
+/**
  * POST: 既存のキャラクターに、別のキャラクターの情報を上書き（インポート）します。
- * Vercel環境で動作するように、物理的なファイル操作をなくし、
- * データベース操作のみで完結するようにロジックを修正しました。
  */
 export async function POST(
   request: NextRequest,
-  
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  context: any // ❗️타입을 완전히 제거하거나 any로 해야 Vercel에서 통과
+  context: any
 ) {
   const { id } = context.params;
   const session = await getServerSession(authOptions);
-  
+
   if (!session?.user?.id) {
     return NextResponse.json({ error: '認証されていません。' }, { status: 401 });
   }
@@ -88,7 +119,6 @@ export async function POST(
     });
 
     return NextResponse.json(updatedCharacter);
-
   } catch (error) {
     console.error('キャラクターのインポートエラー:', error);
     if (error instanceof SyntaxError) {
