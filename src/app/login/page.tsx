@@ -26,7 +26,7 @@ export default function LoginPage() {
       // TODO: エラー 표시 처리
     } else {
       console.log("ログイン成功！");
-      router.push("/home"); // ✅ 로그인 성공 시 홈으로 이동
+      router.push("/MyPage"); // ✅ 로그인 성공 시 홈으로 이동
     }
   };
 
