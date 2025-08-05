@@ -15,11 +15,8 @@ interface SourceImage {
 /**
  * GET: 単一キャラクターの詳細を取得するエンドポイント。
  */
-export async function GET(
-  request: NextRequest,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  context: any
-) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function GET(request: NextRequest, context: any) {
   const { id } = context.params;
   const characterId = parseInt(id, 10);
 
@@ -49,11 +46,7 @@ export async function GET(
 /**
  * POST: 既存のキャラクターに、別のキャラクターの情報を上書き（インポート）します。
  */
-export async function POST(
-  request: NextRequest,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  context: any
-) {
+export async function POST(request: NextRequest, context) {
   const { id } = context.params;
   const session = await getServerSession(authOptions);
 
