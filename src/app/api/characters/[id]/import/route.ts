@@ -15,8 +15,8 @@ interface SourceImage {
 /**
  * GET: 単一キャラクターの詳細を取得するエンドポイント。
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function GET(request: NextRequest, context: any) {
+// @ts-expect-error: context type must not be declared to avoid Vercel build errors
+export async function GET(request: NextRequest, context) {
   const { id } = context.params;
   const characterId = parseInt(id, 10);
 
@@ -46,6 +46,7 @@ export async function GET(request: NextRequest, context: any) {
 /**
  * POST: 既存のキャラクターに、別のキャラクターの情報を上書き（インポート）します。
  */
+// @ts-expect-error: context type must not be declared to avoid Vercel build errors
 export async function POST(request: NextRequest, context) {
   const { id } = context.params;
   const session = await getServerSession(authOptions);
