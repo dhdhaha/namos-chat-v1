@@ -17,12 +17,12 @@ interface SourceImage {
  * Vercel環境で動作するように、物理的なファイル操作をなくし、
  * データベース操作のみで完結するようにロジックを修正しました。
  */
-// ✅ Vercelビルドエラーを解決するため、関数の型定義を修正しました。
+// ✅ Vercelビルドエラーを解決するため、関数の引数構造を最も安定した形式に修正しました。
 export async function POST(
   request: NextRequest,
   context: { params: { id: string } }
 ) {
-  const { params } = context; // パラメータを内部で分割代入
+  const { params } = context; // 関数内で安全にparamsを展開します。
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
     return NextResponse.json({ error: '認証されていません。' }, { status: 401 });
