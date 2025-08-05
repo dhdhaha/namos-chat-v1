@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 // Prisma.PrismaClientKnownRequestError 타입을 사용하기 위해 Prisma를 함께 임포트합니다.
 import { PrismaClient, Prisma } from '@prisma/client';
 import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'; // authOptions 경로 확인
+import { authOptions } from '@/lib/nextauth';
 
 const prisma = new PrismaClient();
 
