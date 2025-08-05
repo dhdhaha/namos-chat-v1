@@ -1,195 +1,125 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/nextauth';
 import { PrismaClient } from '@prisma/client';
-import fs from 'fs/promises';
-import path from 'path';
 
 const prisma = new PrismaClient();
 
-// ✅ Vercelビルドエラーを解決するため、関数の引数構造を修正しました。
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: '認証されていません。' }, { status: 401 });
-  }
+interface SourceImage {
+  imageUrl: string;
+  keyword?: string;
+  isMain: boolean;
+  displayOrder: number;
+}
 
-  const characterId = parseInt(params.id, 10);
+/**
+ * GET: キャラクター詳細取得
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// @ts-expect-error -- Next.js route handler 'context' must not be typed
+export async function GET(request: Request, context) {
+  const { id } = (context as { params: { id: string } }).params;
+  const characterId = parseInt(id, 10);
+
   if (isNaN(characterId)) {
-    return NextResponse.json({ error: '無効なIDです。'}, { status: 400 });
+    return NextResponse.json({ error: '無効なキャラクターIDです。' }, { status: 400 });
   }
 
   try {
     const character = await prisma.characters.findUnique({
       where: { id: characterId },
       include: {
-        characterImages: { orderBy: { displayOrder: 'asc' } },
-        author: { select: { id: true, name: true, nickname: true } },
-        _count: { select: { favorites: true, chat: true } }
-      }
+        characterImages: true,
+      },
     });
 
     if (!character) {
       return NextResponse.json({ error: 'キャラクターが見つかりません。' }, { status: 404 });
     }
+
     return NextResponse.json(character);
   } catch (error) {
-    console.error('キャラクター詳細の取得エラー:', error);
+    console.error('キャラクター取得エラー:', error);
     return NextResponse.json({ error: 'サーバーエラーが発生しました。' }, { status: 500 });
   }
 }
 
-// ✅ Vercelビルドエラーを解決するため、関数の引数構造を修正しました。
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-        return NextResponse.json({ error: '認証されていません。' }, { status: 401 });
+/**
+ * POST: キャラクターインポート
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// @ts-expect-error -- Next.js route handler 'context' must not be typed
+export async function POST(request: Request, context) {
+  const { id } = (context as { params: { id: string } }).params;
+  const session = await getServerSession(authOptions);
+
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: '認証されていません。' }, { status: 401 });
+  }
+
+  const targetCharacterId = parseInt(id, 10);
+  const userId = parseInt(session.user.id, 10);
+
+  if (isNaN(targetCharacterId)) {
+    return NextResponse.json({ error: '無効なキャラクターIDです。' }, { status: 400 });
+  }
+
+  try {
+    const sourceCharacterData = await request.json();
+
+    const targetCharacter = await prisma.characters.findFirst({
+      where: { id: targetCharacterId, author_id: userId },
+    });
+
+    if (!targetCharacter) {
+      return NextResponse.json({ error: 'キャラクターが見つからないか、権限がありません。' }, { status: 404 });
     }
 
-    const characterIdToUpdate = parseInt(params.id, 10);
-    const userId = parseInt(session.user.id, 10);
+    const updatedCharacter = await prisma.$transaction(async (tx) => {
+      await tx.character_images.deleteMany({ where: { characterId: targetCharacterId } });
 
-    if (isNaN(characterIdToUpdate) || isNaN(userId)) {
-      return NextResponse.json({ error: '無効なIDです。'}, { status: 400 });
-    }
+      if (sourceCharacterData.characterImages && Array.isArray(sourceCharacterData.characterImages)) {
+        const newImageMetas = sourceCharacterData.characterImages.map((img: SourceImage) => ({
+          characterId: targetCharacterId,
+          imageUrl: img.imageUrl,
+          keyword: img.keyword || '',
+          isMain: img.isMain,
+          displayOrder: img.displayOrder,
+        }));
 
-    try {
-        const formData = await request.formData();
-        const originalCharacter = await prisma.characters.findFirst({
-            where: { id: characterIdToUpdate, author_id: userId }
-        });
-
-        if (!originalCharacter) {
-            return NextResponse.json({ error: 'キャラクターが見つからないか、更新権限がありません。' }, { status: 404 });
+        if (newImageMetas.length > 0) {
+          await tx.character_images.createMany({ data: newImageMetas });
         }
+      }
 
-        const updatedCharacter = await prisma.$transaction(async (tx) => {
-            const imagesToDeleteString = formData.get('imagesToDelete') as string;
-            if (imagesToDeleteString) {
-                const imagesToDelete: number[] = JSON.parse(imagesToDeleteString);
-                if (imagesToDelete.length > 0) {
-                    const images = await tx.character_images.findMany({ where: { id: { in: imagesToDelete } } });
-                    for (const img of images) {
-                        try {
-                            await fs.unlink(path.join(process.cwd(), 'public', img.imageUrl));
-                        } catch (e) {
-                            console.error(`ファイルの物理削除に失敗: ${img.imageUrl}`, e);
-                        }
-                    }
-                    await tx.character_images.deleteMany({ where: { id: { in: imagesToDelete } } });
-                }
-            }
+      const dataToUpdate = {
+        name: sourceCharacterData.name,
+        description: sourceCharacterData.description,
+        systemTemplate: sourceCharacterData.systemTemplate,
+        firstSituation: sourceCharacterData.firstSituation,
+        firstMessage: sourceCharacterData.firstMessage,
+        visibility: sourceCharacterData.visibility,
+        safetyFilter: sourceCharacterData.safetyFilter,
+        category: sourceCharacterData.category,
+        hashtags: sourceCharacterData.hashtags,
+        detailSetting: sourceCharacterData.detailSetting,
+      };
 
-            const newImageCountString = formData.get('newImageCount') as string;
-            const newImageCount = newImageCountString ? parseInt(newImageCountString, 10) : 0;
-            const newImageMetas = [];
-            const existingImageCount = await tx.character_images.count({ where: { characterId: characterIdToUpdate }});
-            let displayOrderCounter = existingImageCount;
+      return await tx.characters.update({
+        where: { id: targetCharacterId },
+        data: dataToUpdate,
+        include: {
+          characterImages: true,
+        },
+      });
+    });
 
-            for (let i = 0; i < newImageCount; i++) {
-                const file = formData.get(`new_image_${i}`) as File | null;
-                const keyword = formData.get(`new_keyword_${i}`) as string || '';
-
-                if (file && file.size > 0) {
-                    const buffer = Buffer.from(await file.arrayBuffer());
-                    const filename = `${Date.now()}-${file.name.replace(/\s/g, '_')}`;
-                    const savePath = path.join(process.cwd(), 'public/uploads', filename);
-                    await fs.mkdir(path.dirname(savePath), { recursive: true });
-                    await fs.writeFile(savePath, buffer);
-                    
-                    newImageMetas.push({
-                        characterId: characterIdToUpdate,
-                        imageUrl: `/uploads/${filename}`,
-                        keyword,
-                        isMain: false,
-                        displayOrder: displayOrderCounter++,
-                    });
-                }
-            }
-            if (newImageMetas.length > 0) {
-                await tx.character_images.createMany({ data: newImageMetas });
-            }
-            
-            const dataToUpdate = {
-                name: formData.get('name') as string,
-                description: formData.get('description') as string,
-                systemTemplate: formData.get('systemTemplate') as string,
-                firstSituation: formData.get('firstSituation') as string,
-                firstMessage: formData.get('firstMessage') as string,
-                visibility: formData.get('visibility') as string,
-                safetyFilter: formData.get('safetyFilter') === 'true',
-                category: formData.get('category') as string,
-                hashtags: JSON.parse(formData.get('hashtags') as string || '[]'),
-                detailSetting: formData.get('detailSetting') as string,
-            };
-
-            return await tx.characters.update({
-                where: { id: characterIdToUpdate },
-                data: dataToUpdate
-            });
-        });
-
-        return NextResponse.json(updatedCharacter);
-
-    } catch (error) {
-        console.error('キャラクターの更新エラー:', error);
-        return NextResponse.json({ error: 'サーバーエラーが発生しました。' }, { status: 500 });
+    return NextResponse.json(updatedCharacter);
+  } catch (error) {
+    console.error('キャラクターのインポートエラー:', error);
+    if (error instanceof SyntaxError) {
+      return NextResponse.json({ error: '無効なJSONデータです。' }, { status: 400 });
     }
-}
-
-// ✅ Vercelビルドエラーを解決するため、関数の引数構造を修正しました。
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-        return NextResponse.json({ error: '認証されていません。' }, { status: 401 });
-    }
-
-    const characterId = parseInt(params.id, 10);
-    const userId = parseInt(session.user.id, 10);
-
-    if (isNaN(characterId) || isNaN(userId)) {
-        return NextResponse.json({ error: '無効なIDです。'}, { status: 400 });
-    }
-
-    try {
-        const character = await prisma.characters.findFirst({
-            where: {
-                id: characterId,
-                author_id: userId,
-            },
-            include: { characterImages: true }
-        });
-
-        if (!character) {
-            return NextResponse.json({ error: 'キャラクターが見つからないか、削除権限がありません。' }, { status: 404 });
-        }
-        
-        for (const img of character.characterImages) {
-            const filePath = path.join(process.cwd(), 'public', img.imageUrl);
-            try {
-                await fs.unlink(filePath);
-            } catch (e) {
-                console.error(`ファイルの物理削除に失敗: ${filePath}`, e);
-            }
-        }
-
-        await prisma.characters.delete({
-            where: { id: characterId },
-        });
-
-        return NextResponse.json({ message: 'キャラクターが正常に削除されました。' }, { status: 200 });
-
-    } catch (error) {
-        console.error('キャラクターの削除エラー:', error);
-        return NextResponse.json({ error: 'サーバーエラーが発生しました。' }, { status: 500 });
-    }
+    return NextResponse.json({ error: 'サーバーエラーが発生しました。' }, { status: 500 });
+  }
 }
