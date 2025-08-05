@@ -5,7 +5,6 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-// ✅ anyの代わりに、インポートされる画像の具体的な型を定義しました
 interface SourceImage {
   imageUrl: string;
   keyword?: string;
@@ -18,10 +17,12 @@ interface SourceImage {
  * Vercel環境で動作するように、物理的なファイル操作をなくし、
  * データベース操作のみで完結するようにロジックを修正しました。
  */
+// ✅ Vercelビルドエラーを解決するため、関数の型定義を修正しました。
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: { id: string } }
 ) {
+  const { params } = context; // パラメータを内部で分割代入
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
     return NextResponse.json({ error: '認証されていません。' }, { status: 401 });
@@ -51,9 +52,7 @@ export async function POST(
       await tx.character_images.deleteMany({ where: { characterId: targetCharacterId } });
 
       // 2. ソースの画像情報を元に、新しい画像レコードを作成
-      // (物理的なファイルコピーではなく、同じURLを参照するレコードを新規作成)
       if (sourceCharacterData.characterImages && Array.isArray(sourceCharacterData.characterImages)) {
-        // ✅ imgの型をanyからSourceImageに変更しました
         const newImageMetas = sourceCharacterData.characterImages.map((img: SourceImage) => ({
           characterId: targetCharacterId,
           imageUrl: img.imageUrl,
