@@ -5,6 +5,13 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+interface SourceImage {
+  imageUrl: string;
+  keyword?: string;
+  isMain: boolean;
+  displayOrder: number;
+}
+
 /**
  * GET: キャラクター詳細取得
  */
@@ -34,7 +41,7 @@ export async function GET(request: Request, context) {
 /**
  * POST: キャラクターインポート
  */
-// @ts-expect-error -- context 타입 선언은 Vercel에서 금지됨
+// @ts-expect-error -- context 타입 선언은 Vercelで 금지됨
 export async function POST(request: Request, context) {
   const { id } = (context as { params: { id: string } }).params;
   const session = await getServerSession(authOptions);
@@ -64,7 +71,7 @@ export async function POST(request: Request, context) {
     await tx.character_images.deleteMany({ where: { characterId: targetCharacterId } });
 
     if (sourceCharacterData.characterImages && Array.isArray(sourceCharacterData.characterImages)) {
-      const newImageMetas = sourceCharacterData.characterImages.map((img: any) => ({
+      const newImageMetas = (sourceCharacterData.characterImages as SourceImage[]).map((img) => ({
         characterId: targetCharacterId,
         imageUrl: img.imageUrl,
         keyword: img.keyword || '',
