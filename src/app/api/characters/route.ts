@@ -1,4 +1,4 @@
-import { NextResponse, NextRequest } from 'next/server';
+import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import fs from 'fs/promises';
 import path from 'path';
@@ -7,190 +7,157 @@ import { authOptions } from '@/lib/nextauth';
 
 const prisma = new PrismaClient();
 
-// ✅ Vercelビルドエラーを回避するため、URLから直接IDを解析するヘルパー関数
-function extractIdFromRequest(request: Request): number | null {
-  const url = new URL(request.url);
-  // APIパスの最後の部分をIDとして取得します (例: /api/characters/123 -> "123")
-  const idStr = url.pathname.split('/').pop();
-  if (!idStr) return null;
-  const parsedId = parseInt(idStr, 10);
-  return isNaN(parsedId) ? null : parsedId;
-}
+type ImageMetaData = {
+  url: string;
+  keyword: string;
+  isMain: boolean;
+  displayOrder: number;
+};
 
-// GET: 特定のキャラクターの詳細情報を取得します
-export async function GET(request: NextRequest) {
+// GET: ログインユーザーが作成したキャラクターのリストを取得する
+export async function GET() {
   const session = await getServerSession(authOptions);
+
   if (!session?.user?.id) {
     return NextResponse.json({ error: '認証されていません。' }, { status: 401 });
   }
 
-  const characterId = extractIdFromRequest(request);
-  if (characterId === null) {
-    return NextResponse.json({ error: '無効なIDです。'}, { status: 400 });
-  }
-
   try {
-    const character = await prisma.characters.findUnique({
-      where: { id: characterId },
+    const userId = parseInt(session.user.id, 10);
+
+    const characters = await prisma.characters.findMany({
+      where: { author_id: userId },
+      orderBy: { id: 'desc' },
       include: {
-        characterImages: { orderBy: { displayOrder: 'asc' } },
-        author: { select: { id: true, name: true, nickname: true } },
-        _count: { select: { favorites: true, chat: true } }
-      }
+        characterImages: {
+          orderBy: { displayOrder: 'asc' },
+          take: 1,
+        },
+        _count: {
+          select: { favorites: true, interactions: true },
+        },
+      },
     });
 
-    if (!character) {
-      return NextResponse.json({ error: 'キャラクターが見つかりません。' }, { status: 404 });
-    }
-    return NextResponse.json(character);
+    return NextResponse.json(characters);
+
   } catch (error) {
-    console.error('キャラクター詳細の取得エラー:', error);
+    console.error('キャラクターリストの取得エラー:', error);
     return NextResponse.json({ error: 'サーバーエラーが発生しました。' }, { status: 500 });
   }
 }
 
-// PUT: キャラクター情報を更新します
-export async function PUT(request: NextRequest) {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-        return NextResponse.json({ error: '認証されていません。' }, { status: 401 });
+// POST: 新しいキャラクターを作成する
+export async function POST(request: Request) {
+  try {
+    const formData = await request.formData();
+
+    const userIdString = formData.get('userId') as string;
+    const name = formData.get('name') as string;
+    const description = formData.get('description') as string || '';
+    const category = formData.get('category') as string || '';
+    const hashtagsString = formData.get('hashtags') as string || '[]';
+    const visibility = formData.get('visibility') as string || 'public';
+    const safetyFilterString = formData.get('safetyFilter') as string || 'true';
+    const systemTemplate = formData.get('systemTemplate') as string || '';
+    const detailSetting = formData.get('detailSetting') as string || '';
+    const firstSituation = formData.get('firstSituation') as string || '';
+    const firstMessage = formData.get('firstMessage') as string || '';
+
+    if (!userIdString) {
+      return NextResponse.json({ message: "認証情報が見つかりません。再度ログインしてください。" }, { status: 401 });
+    }
+    const userId = parseInt(userIdString, 10);
+    if (isNaN(userId)) {
+      return NextResponse.json({ message: "無効なユーザーIDです。" }, { status: 400 });
+    }
+    
+    if (!name || !name.trim()) {
+      return NextResponse.json({ message: "キャラクターの名前は必須項目です。" }, { status: 400 });
     }
 
-    const characterIdToUpdate = extractIdFromRequest(request);
-    const userId = parseInt(session.user.id, 10);
-
-    if (characterIdToUpdate === null || isNaN(userId)) {
-      return NextResponse.json({ error: '無効なIDです。'}, { status: 400 });
-    }
-
+    const safetyFilter = safetyFilterString === 'true';
+    let hashtags: string[] = [];
     try {
-        const formData = await request.formData();
-        const originalCharacter = await prisma.characters.findFirst({
-            where: { id: characterIdToUpdate, author_id: userId }
-        });
-
-        if (!originalCharacter) {
-            return NextResponse.json({ error: 'キャラクターが見つからないか、更新権限がありません。' }, { status: 404 });
-        }
-
-        const updatedCharacter = await prisma.$transaction(async (tx) => {
-            const imagesToDeleteString = formData.get('imagesToDelete') as string;
-            if (imagesToDeleteString) {
-                const imagesToDelete: number[] = JSON.parse(imagesToDeleteString);
-                if (imagesToDelete.length > 0) {
-                    const images = await tx.character_images.findMany({ where: { id: { in: imagesToDelete } } });
-                    for (const img of images) {
-                        try {
-                            await fs.unlink(path.join(process.cwd(), 'public', img.imageUrl));
-                        } catch (e) {
-                            console.error(`ファイルの物理削除に失敗: ${img.imageUrl}`, e);
-                        }
-                    }
-                    await tx.character_images.deleteMany({ where: { id: { in: imagesToDelete } } });
-                }
-            }
-
-            const newImageCountString = formData.get('newImageCount') as string;
-            const newImageCount = newImageCountString ? parseInt(newImageCountString, 10) : 0;
-            const newImageMetas = [];
-            const existingImageCount = await tx.character_images.count({ where: { characterId: characterIdToUpdate }});
-            let displayOrderCounter = existingImageCount;
-
-            for (let i = 0; i < newImageCount; i++) {
-                const file = formData.get(`new_image_${i}`) as File | null;
-                const keyword = formData.get(`new_keyword_${i}`) as string || '';
-
-                if (file && file.size > 0) {
-                    const buffer = Buffer.from(await file.arrayBuffer());
-                    const filename = `${Date.now()}-${file.name.replace(/\s/g, '_')}`;
-                    const savePath = path.join(process.cwd(), 'public/uploads', filename);
-                    await fs.mkdir(path.dirname(savePath), { recursive: true });
-                    await fs.writeFile(savePath, buffer);
-                    
-                    newImageMetas.push({
-                        characterId: characterIdToUpdate,
-                        imageUrl: `/uploads/${filename}`,
-                        keyword,
-                        isMain: false,
-                        displayOrder: displayOrderCounter++,
-                    });
-                }
-            }
-            if (newImageMetas.length > 0) {
-                await tx.character_images.createMany({ data: newImageMetas });
-            }
-            
-            const dataToUpdate = {
-                name: formData.get('name') as string,
-                description: formData.get('description') as string,
-                systemTemplate: formData.get('systemTemplate') as string,
-                firstSituation: formData.get('firstSituation') as string,
-                firstMessage: formData.get('firstMessage') as string,
-                visibility: formData.get('visibility') as string,
-                safetyFilter: formData.get('safetyFilter') === 'true',
-                category: formData.get('category') as string,
-                hashtags: JSON.parse(formData.get('hashtags') as string || '[]'),
-                detailSetting: formData.get('detailSetting') as string,
-            };
-
-            return await tx.characters.update({
-                where: { id: characterIdToUpdate },
-                data: dataToUpdate
-            });
-        });
-
-        return NextResponse.json(updatedCharacter);
-
-    } catch (error) {
-        console.error('キャラクターの更新エラー:', error);
-        return NextResponse.json({ error: 'サーバーエラーが発生しました。' }, { status: 500 });
+      hashtags = JSON.parse(hashtagsString);
+    } catch {
+      hashtags = [];
     }
-}
+    
+    const imageCountString = formData.get('imageCount') as string;
+    const imageCount = imageCountString ? parseInt(imageCountString) : 0;
+    const imageMetas: ImageMetaData[] = [];
 
-// DELETE: 特定のキャラクターを削除します
-export async function DELETE(request: NextRequest) {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-        return NextResponse.json({ error: '認証されていません。' }, { status: 401 });
+    for (let i = 0; i < imageCount; i++) {
+      const file = formData.get(`image_${i}`) as File | null;
+      const keyword = formData.get(`keyword_${i}`) as string || '';
+      
+      if (file && file.size > 0) {
+        const buffer = Buffer.from(await file.arrayBuffer());
+        const filename = `${Date.now()}-${file.name.replace(/\s/g, '_')}`;
+        const savePath = path.join(process.cwd(), 'public/uploads', filename);
+        await fs.mkdir(path.dirname(savePath), { recursive: true });
+        await fs.writeFile(savePath, buffer);
+        const imageUrl = `/uploads/${filename}`;
+        imageMetas.push({ url: imageUrl, keyword, isMain: i === 0, displayOrder: i });
+      }
     }
+    
+    // ▼▼▼ 変更点 1: `users` を `author` に修正 ▼▼▼
+    const characterData = {
+      name,
+      description,
+      systemTemplate,
+      firstSituation,
+      firstMessage,
+      visibility,
+      safetyFilter,
+      category,
+      hashtags,
+      detailSetting,
+      author: { // `users`ではなく`author`を使用
+        connect: {
+          id: userId,
+        },
+      },
+    };
 
-    const characterId = extractIdFromRequest(request);
-    const userId = parseInt(session.user.id, 10);
+    const newCharacter = await prisma.$transaction(async (tx) => {
+      const character = await tx.characters.create({
+        data: characterData,
+      });
 
-    if (characterId === null || isNaN(userId)) {
-        return NextResponse.json({ error: '無効なIDです。'}, { status: 400 });
-    }
-
-    try {
-        const character = await prisma.characters.findFirst({
-            where: {
-                id: characterId,
-                author_id: userId,
-            },
-            include: { characterImages: true }
+      if (imageMetas.length > 0) {
+        await tx.character_images.createMany({
+          data: imageMetas.map(meta => ({
+            characterId: character.id,
+            imageUrl: meta.url,
+            keyword: meta.keyword,
+            isMain: meta.isMain,
+            displayOrder: meta.displayOrder,
+          })),
         });
+      }
 
-        if (!character) {
-            return NextResponse.json({ error: 'キャラクターが見つからないか、削除権限がありません。' }, { status: 404 });
-        }
-        
-        for (const img of character.characterImages) {
-            const filePath = path.join(process.cwd(), 'public', img.imageUrl);
-            try {
-                await fs.unlink(filePath);
-            } catch (e) {
-                console.error(`ファイルの物理削除に失敗: ${filePath}`, e);
-            }
-        }
+      return await tx.characters.findUnique({
+        where: { id: character.id },
+        include: {
+          characterImages: true,
+        },
+      });
+    });
 
-        await prisma.characters.delete({
-            where: { id: characterId },
-        });
+    return NextResponse.json({ 
+      message: 'キャラクターの作成に成功しました！', 
+      character: newCharacter 
+    }, { status: 201 });
 
-        return NextResponse.json({ message: 'キャラクターが正常に削除されました。' }, { status: 200 });
-
-    } catch (error) {
-        console.error('キャラクターの削除エラー:', error);
-        return NextResponse.json({ error: 'サーバーエラーが発生しました。' }, { status: 500 });
+  } catch (error) {
+    // ▼▼▼ 変更点 2: console.errorの韓国語を日本語に修正 ▼▼▼
+    console.error("--- ❌ [致命的なエラー発生] サーバーエラー:", error);
+    if (error instanceof Error) {
+        return NextResponse.json({ message: error.message }, { status: 500 });
     }
+    return NextResponse.json({ message: '不明なサーバーエラーが発生しました' }, { status: 500 });
+  }
 }

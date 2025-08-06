@@ -1,21 +1,31 @@
-import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/lib/nextauth';
+import { NextResponse, NextRequest } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import fs from 'fs/promises';
 import path from 'path';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '@/lib/nextauth';
 
 const prisma = new PrismaClient();
 
+// ✅ Vercelビルドエラーを回避するため、URLから直接IDを解析するヘルパー関数
+function extractIdFromRequest(request: Request): number | null {
+  const url = new URL(request.url);
+  // APIパスの最後の部分をIDとして取得します (例: /api/characters/123 -> "123")
+  const idStr = url.pathname.split('/').pop();
+  if (!idStr) return null;
+  const parsedId = parseInt(idStr, 10);
+  return isNaN(parsedId) ? null : parsedId;
+}
+
 // GET: 特定のキャラクターの詳細情報を取得します（公開ページ用）
-export async function GET(request: Request, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
     return NextResponse.json({ error: '認証されていません。' }, { status: 401 });
   }
 
-  const characterId = parseInt(params.id, 10);
-  if (isNaN(characterId)) {
+  const characterId = extractIdFromRequest(request);
+  if (characterId === null) {
     return NextResponse.json({ error: '無効なIDです。'}, { status: 400 });
   }
 
@@ -57,16 +67,16 @@ export async function GET(request: Request, { params }: { params: { id: string }
 }
 
 // PUT: キャラクター情報を更新します
-export async function PUT(request: Request, { params }: { params: { id: string } }) {
+export async function PUT(request: NextRequest) {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
         return NextResponse.json({ error: '認証されていません。' }, { status: 401 });
     }
 
-    const characterIdToUpdate = parseInt(params.id, 10);
+    const characterIdToUpdate = extractIdFromRequest(request);
     const userId = parseInt(session.user.id, 10);
 
-    if (isNaN(characterIdToUpdate) || isNaN(userId)) {
+    if (characterIdToUpdate === null || isNaN(userId)) {
       return NextResponse.json({ error: '無効なIDです。'}, { status: 400 });
     }
 
@@ -100,7 +110,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
 
             const newImageCountString = formData.get('newImageCount') as string;
             const newImageCount = newImageCountString ? parseInt(newImageCountString, 10) : 0;
-            const newImageMetas = [];
+            const newImageMetas: { characterId: number; imageUrl: string; keyword: string; isMain: boolean; displayOrder: number; }[] = [];
 
             const existingImageCount = await tx.character_images.count({ where: { characterId: characterIdToUpdate }});
             let displayOrderCounter = existingImageCount;
@@ -126,7 +136,6 @@ export async function PUT(request: Request, { params }: { params: { id: string }
                     });
                 }
             }
-            // ▼▼▼ 変更点: `as any`を削除しました ▼▼▼
             if (newImageMetas.length > 0) {
                 await tx.character_images.createMany({ data: newImageMetas });
             }
@@ -159,16 +168,16 @@ export async function PUT(request: Request, { params }: { params: { id: string }
 }
 
 // DELETE: 特定のキャラクターを削除します (変更なし)
-export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest) {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
         return NextResponse.json({ error: '認証されていません。' }, { status: 401 });
     }
 
-    const characterId = parseInt(params.id, 10);
+    const characterId = extractIdFromRequest(request);
     const userId = parseInt(session.user.id, 10);
 
-    if (isNaN(characterId) || isNaN(userId)) {
+    if (characterId === null || isNaN(userId)) {
         return NextResponse.json({ error: '無効なIDです。'}, { status: 400 });
     }
 
