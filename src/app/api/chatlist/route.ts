@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, NextRequest } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import {
   VertexAI,
@@ -15,7 +15,7 @@ const vertex_ai = new VertexAI({
 });
 
 const generativeModel = vertex_ai.getGenerativeModel({
-  model: "gemini-2.5-pro",
+  model: "gemini-1.5-pro",
   safetySettings: [
     { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
     { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
@@ -24,21 +24,28 @@ const generativeModel = vertex_ai.getGenerativeModel({
   ],
 });
 
+// ✅ Vercelビルドエラーを回避するため、URLから直接IDを解析するヘルパー関数
+function extractChatIdFromRequest(request: Request): number | null {
+  const url = new URL(request.url);
+  const idStr = url.pathname.split('/').pop();
+  if (!idStr) return null;
+  const parsedId = parseInt(idStr, 10);
+  return isNaN(parsedId) ? null : parsedId;
+}
+
+
 export async function POST(
-  request: Request,
-  { params }: { params: { chatId: string } }
+  request: NextRequest
 ) {
   const { message } = await request.json();
-  const { chatId } = params;
+  const numericChatId = extractChatIdFromRequest(request);
 
-  if (!chatId || !message) {
-    return NextResponse.json({ error: "チャットIDまたはメッセージがありません。" }, { status: 400 });
+  if (numericChatId === null) {
+    return NextResponse.json({ error: "無効なチャットIDです。" }, { status: 400 });
   }
 
-  // 変更点 1: URLから受け取った文字列のIDを数値に変換
-  const numericChatId = parseInt(chatId, 10);
-  if (isNaN(numericChatId)) {
-    return NextResponse.json({ error: "無効なチャットIDです。" }, { status: 400 });
+  if (!message) {
+    return NextResponse.json({ error: "メッセージがありません。" }, { status: 400 });
   }
 
   try {
@@ -63,7 +70,6 @@ export async function POST(
       - 詳細設定: ${persona.detailSetting || "設定なし"}
     `;
 
-    // 変更点 2: `prisma.message` ではなく `prisma.chat_message` を使用
     const dbMessages = await prisma.chat_message.findMany({
       where: { chatId: numericChatId },
       orderBy: { createdAt: "asc" },
@@ -89,7 +95,6 @@ export async function POST(
     }
 
     // --- 3. 新しいメッセージをデータベースに保存 ---
-    // 変更点 3: `prisma.chat_message.create` を使用
     await prisma.$transaction([
       prisma.chat_message.create({
         data: {
