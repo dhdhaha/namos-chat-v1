@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, NextRequest } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/nextauth';
@@ -8,7 +8,8 @@ const prisma = new PrismaClient();
 /**
  * GET: すべてのお知らせを新しい順に取得します
  */
-export async function GET() {
+// ✅ 関数の返り値の型を明示的に指定しました。
+export async function GET(_request: NextRequest): Promise<NextResponse> {
   try {
     const notices = await prisma.notices.findMany({
       orderBy: {
@@ -28,7 +29,8 @@ export async function GET() {
 /**
  * POST: 新しいお知らせを作成します (管理者のみ)
  */
-export async function POST(request: Request) {
+// ✅ 関数の返り値の型を明示的に指定しました。
+export async function POST(request: NextRequest): Promise<NextResponse> {
   const session = await getServerSession(authOptions);
 
   // ログインしていない、または管理者でない場合はエラー
