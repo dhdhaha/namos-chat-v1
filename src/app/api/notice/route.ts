@@ -8,8 +8,8 @@ const prisma = new PrismaClient();
 /**
  * GET: すべてのお知らせを新しい順に取得します
  */
-// ✅ 関数の返り値の型を明示的に指定しました。
-export async function GET(_request: NextRequest): Promise<NextResponse> {
+// ✅ Vercelビルドエラーを解決するため、未使用の`_request`引数を削除しました。
+export async function GET(): Promise<NextResponse> {
   try {
     const notices = await prisma.notices.findMany({
       orderBy: {
@@ -29,7 +29,6 @@ export async function GET(_request: NextRequest): Promise<NextResponse> {
 /**
  * POST: 新しいお知らせを作成します (管理者のみ)
  */
-// ✅ 関数の返り値の型を明示的に指定しました。
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const session = await getServerSession(authOptions);
 
