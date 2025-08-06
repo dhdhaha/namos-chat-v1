@@ -1,5 +1,4 @@
-import { NextResponse } from 'next/server';
-// Prisma.PrismaClientKnownRequestError 타입을 사용하기 위해 Prisma를 함께 임포트합니다.
+import { NextResponse, NextRequest } from 'next/server';
 import { PrismaClient, Prisma } from '@prisma/client';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/nextauth';
@@ -10,7 +9,7 @@ const prisma = new PrismaClient();
  * GET: 特定のお知らせの詳細情報をIDで取得します
  */
 export async function GET(
-  request: Request,
+  request: NextRequest,
   { params }: { params: { noticeId: string } }
 ) {
   try {
@@ -45,7 +44,7 @@ export async function GET(
  * PUT: 特定のお知らせを更新します (管理者のみ)
  */
 export async function PUT(
-  request: Request,
+  request: NextRequest,
   { params }: { params: { noticeId: string } }
 ) {
   const session = await getServerSession(authOptions);
@@ -81,7 +80,7 @@ export async function PUT(
  * DELETE: 特定のお知らせを削除します (管理者のみ)
  */
 export async function DELETE(
-  request: Request,
+  request: NextRequest,
   { params }: { params: { noticeId: string } }
 ) {
   // 1. セッションを取得して管理者権限を確認
@@ -106,7 +105,6 @@ export async function DELETE(
 
   } catch (error) {
     console.error('お知らせ削除エラー:', error);
-    // ✨ anyの代わりにPrisma.PrismaClientKnownRequestErrorを使用して型安全にエラーを処理します。
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
        return NextResponse.json({ error: '削除対象のお知らせが見つかりません。' }, { status: 404 });
     }
