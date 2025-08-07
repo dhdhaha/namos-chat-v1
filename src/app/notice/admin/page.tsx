@@ -19,10 +19,10 @@ export default async function NoticeCreateAdminPage() {
       <div className="mx-auto max-w-3xl">
         <header className="flex items-center p-4 sticky top-0 bg-black/80 backdrop-blur-sm z-10 border-b border-gray-800">
           {/* ✅ お知らせ一覧ページに戻る */}
-          <Link href="/notice">
+          <Link href="/notice" className="p-2 rounded-full hover:bg-gray-800 transition-colors">
             <ArrowLeft />
           </Link>
-          <h1 className="font-bold text-lg mx-auto">お知らせ作成</h1>
+          <h1 className="font-bold text-lg absolute left-1/2 -translate-x-1/2">お知らせ作成</h1>
         </header>
         <main>
           <NoticeForm />

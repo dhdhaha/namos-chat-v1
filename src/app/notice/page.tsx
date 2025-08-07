@@ -55,14 +55,13 @@ export default function NoticesPage() {
     <div className="bg-black min-h-screen text-white">
       <div className="mx-auto max-w-3xl">
         <header className="flex items-center justify-between p-4 sticky top-0 bg-black/80 backdrop-blur-sm z-10 border-b border-gray-800">
-          {/* ✅ 버튼에 호버 효과와 스타일을 추가했습니다. */}
           <button 
             onClick={() => router.push('/MyPage')}
             className="p-2 rounded-full hover:bg-gray-800 transition-colors cursor-pointer"
           >
             <ArrowLeft />
           </button>
-          <h1 className="font-bold text-lg">お知らせ</h1>
+          <h1 className="font-bold text-lg absolute left-1/2 -translate-x-1/2">お知らせ</h1>
           {session?.user?.role === 'ADMIN' ? (
             <button 
               onClick={() => router.push('/notice/admin')}
