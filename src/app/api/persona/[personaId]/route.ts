@@ -1,17 +1,23 @@
-import { NextRequest, NextResponse } from 'next/server'; // ★修正点: NextRequest をインポート
+import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/nextauth';
 
 const prisma = new PrismaClient();
 
+// ✅ Vercelビルドエラーを回避するため、URLから直接IDを解析するヘルパー関数
+function extractPersonaIdFromRequest(request: Request): number | null {
+  const url = new URL(request.url);
+  const idStr = url.pathname.split('/').pop();
+  if (!idStr) return null;
+  const parsedId = parseInt(idStr, 10);
+  return isNaN(parsedId) ? null : parsedId;
+}
+
 /**
  * GET: 特定のペルソナの詳細情報を取得します (編集ページ用)
  */
-export async function GET(
-  request: NextRequest, // ★修正点: Request を NextRequest に変更
-  { params }: { params: { personaId: string } }
-) {
+export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
     return NextResponse.json({ error: '認証されていません。' }, { status: 401 });
@@ -19,9 +25,9 @@ export async function GET(
 
   try {
     const userId = parseInt(session.user.id, 10);
-    const personaId = parseInt(params.personaId, 10);
+    const personaId = extractPersonaIdFromRequest(request);
 
-    if (isNaN(personaId)) {
+    if (personaId === null) {
       return NextResponse.json({ error: '無効なIDです。' }, { status: 400 });
     }
 
@@ -44,10 +50,7 @@ export async function GET(
 /**
  * PUT: 特定のペルソナ情報を更新します
  */
-export async function PUT(
-  request: NextRequest, // ★修正点: Request を NextRequest に変更
-  { params }: { params: { personaId: string } }
-) {
+export async function PUT(request: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
     return NextResponse.json({ error: '認証されていません。' }, { status: 401 });
@@ -55,11 +58,11 @@ export async function PUT(
 
   try {
     const userId = parseInt(session.user.id, 10);
-    const personaIdToUpdate = parseInt(params.personaId, 10);
+    const personaIdToUpdate = extractPersonaIdFromRequest(request);
     const body = await request.json();
     const { nickname, age, gender, description } = body;
 
-    if (isNaN(personaIdToUpdate)) {
+    if (personaIdToUpdate === null) {
       return NextResponse.json({ error: '無効なIDです。' }, { status: 400 });
     }
     if (!nickname || !description) {
@@ -96,10 +99,7 @@ export async function PUT(
 /**
  * DELETE: 特定のペルソナを削除します
  */
-export async function DELETE(
-  request: NextRequest, // ★修正点: Request を NextRequest に変更
-  { params }: { params: { personaId: string } }
-) {
+export async function DELETE(request: NextRequest) {
   const session = await getServerSession(authOptions);
 
   if (!session?.user?.id) {
@@ -108,10 +108,10 @@ export async function DELETE(
 
   try {
     const userId = parseInt(session.user.id, 10);
-    const personaIdToDelete = parseInt(params.personaId, 10);
+    const personaIdToDelete = extractPersonaIdFromRequest(request);
 
-    if (isNaN(personaIdToDelete)) {
-      return NextResponse.json({ error: '無効なペルソナIDです。' }, { status: 400 });
+    if (personaIdToDelete === null) {
+      return NextResponse.json({ error: '無効なIDです。' }, { status: 400 });
     }
 
     const persona = await prisma.personas.findFirst({
