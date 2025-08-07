@@ -1,14 +1,10 @@
-import NoticeDetailClient from '@/components/NoticeDetailClient';
+import NoticeDetailClient from "@/components/NoticeDetailClient";
 
-// page.tsxが受け取るpropsの型を定義します。
-interface NoticeDetailPageProps {
-  params: {
-    noticeId: string;
-  };
-}
-
-// このページはサーバーコンポーネントとして、URL 파라미터를 받아
-// クライアントコンポーネントをレンダリングし、파라미터를 전달합니다.
-export default function NoticeDetailPage({ params }: NoticeDetailPageProps) {
+// 타입 정의 없이 바로 구조 분해로 작성
+export default function NoticeDetailPage({
+  params,
+}: {
+  params: { noticeId: string };
+}) {
   return <NoticeDetailClient noticeId={params.noticeId} />;
 }
