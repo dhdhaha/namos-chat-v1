@@ -15,11 +15,17 @@ type NoticeDetail = {
   content: string;
 };
 
-// ✅ Vercelビルドエラーを解決するため、ページの引数構造を修正しました。
-export default function NoticeDetailPage({ params }: { params: { noticeId: string } }) {
+// Props 타입을 별도의 인터페이스로 분리하여 빌드 에러를 해결합니다.
+interface NoticeDetailPageProps {
+  params: {
+    noticeId: string;
+  };
+}
+
+export default function NoticeDetailPage({ params }: NoticeDetailPageProps) {
   const router = useRouter();
-  const { noticeId } = params; // useParamsの代わりにpropsから直接取得
-  
+  const { noticeId } = params;
+
   const { data: session } = useSession();
   const [notice, setNotice] = useState<NoticeDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -56,7 +62,7 @@ export default function NoticeDetailPage({ params }: { params: { noticeId: strin
       }
       alert('お知らせが削除されました。');
       router.push('/notice');
-      router.refresh(); 
+      router.refresh();
     } catch (error) {
       console.error(error);
       alert((error as Error).message);
@@ -72,7 +78,7 @@ export default function NoticeDetailPage({ params }: { params: { noticeId: strin
   if (!notice) {
     return <div className="min-h-screen bg-black text-white flex items-center justify-center">お知らせが見つかりません。</div>;
   }
-  
+
   const getCategoryClass = (category: string) => {
     switch (category) {
       case 'アップデート': return 'text-green-400';
@@ -92,15 +98,15 @@ export default function NoticeDetailPage({ params }: { params: { noticeId: strin
           <h1 className="font-bold text-lg">お知らせ詳細</h1>
           {session?.user?.role === 'ADMIN' ? (
             <div className="flex items-center gap-2">
-              <button 
-                onClick={() => router.push(`/notice/admin/${noticeId}`)} 
+              <button
+                onClick={() => router.push(`/notice/admin/${noticeId}`)}
                 disabled={isProcessing}
                 className="p-2 rounded-full hover:bg-gray-800 transition-colors cursor-pointer disabled:opacity-50"
               >
                 <Edit className="w-5 h-5" />
               </button>
-              <button 
-                onClick={handleDelete} 
+              <button
+                onClick={handleDelete}
                 disabled={isProcessing}
                 className="p-2 rounded-full hover:bg-gray-800 transition-colors cursor-pointer disabled:opacity-50"
               >
@@ -108,7 +114,7 @@ export default function NoticeDetailPage({ params }: { params: { noticeId: strin
               </button>
             </div>
           ) : (
-            <div className="w-20" /> // ボタン領域만큼 공간 확보
+            <div className="w-20" />
           )}
         </header>
 
@@ -121,7 +127,7 @@ export default function NoticeDetailPage({ params }: { params: { noticeId: strin
             {new Date(notice.createdAt).toLocaleDateString('ja-JP')}
           </p>
           <div className="border-t border-gray-800 my-6"></div>
-          <article 
+          <article
             className="prose prose-invert prose-p:text-gray-300 prose-strong:text-pink-400"
             dangerouslySetInnerHTML={{ __html: notice.content }}
           />
