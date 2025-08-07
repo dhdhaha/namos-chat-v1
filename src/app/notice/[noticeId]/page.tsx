@@ -1,3 +1,5 @@
+// 1. 実際のUIとロジックを担当するクライアントコンポーネントを先に定義します。
+// このコンポーネントが、既存コードのすべての役割を果たします。
 "use client";
 
 import { useRouter } from "next/navigation";
@@ -6,7 +8,7 @@ import { ArrowLeft, Edit, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
-// お知らせ詳細データの型定義
+// 詳細データの型定義
 type NoticeDetail = {
   id: number;
   category: string;
@@ -15,17 +17,13 @@ type NoticeDetail = {
   content: string;
 };
 
-// Props 타입을 별도의 인터페이스로 분리하여 빌드 에러를 해결합니다.
-interface NoticeDetailPageProps {
-  params: {
-    noticeId: string;
-  };
+// クライアントコンポーネントのpropsの型定義
+interface NoticeDetailClientProps {
+  noticeId: string;
 }
 
-export default function NoticeDetailPage({ params }: NoticeDetailPageProps) {
+function NoticeDetailClient({ noticeId }: NoticeDetailClientProps) {
   const router = useRouter();
-  const { noticeId } = params;
-
   const { data: session } = useSession();
   const [notice, setNotice] = useState<NoticeDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -155,4 +153,17 @@ export default function NoticeDetailPage({ params }: NoticeDetailPageProps) {
       </div>
     </div>
   );
+}
+
+
+// 2. page.tsxファイルのデフォルトエクスポートは、シンプルなサーバーコンポーネントとして作成します。
+// このコンポーネントは、URLからパラメータを受け取り、クライアントコンポーネントに渡す役割のみを担います。
+interface NoticeDetailPageProps {
+  params: {
+    noticeId: string;
+  };
+}
+
+export default function NoticeDetailPage({ params }: NoticeDetailPageProps) {
+  return <NoticeDetailClient noticeId={params.noticeId} />;
 }
