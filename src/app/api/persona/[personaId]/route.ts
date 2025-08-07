@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server'; // ★修正点: NextRequest をインポート
 import { PrismaClient } from '@prisma/client';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/nextauth';
@@ -9,7 +9,7 @@ const prisma = new PrismaClient();
  * GET: 特定のペルソナの詳細情報を取得します (編集ページ用)
  */
 export async function GET(
-  request: Request,
+  request: NextRequest, // ★修正点: Request を NextRequest に変更
   { params }: { params: { personaId: string } }
 ) {
   const session = await getServerSession(authOptions);
@@ -45,7 +45,7 @@ export async function GET(
  * PUT: 特定のペルソナ情報を更新します
  */
 export async function PUT(
-  request: Request,
+  request: NextRequest, // ★修正点: Request を NextRequest に変更
   { params }: { params: { personaId: string } }
 ) {
   const session = await getServerSession(authOptions);
@@ -97,7 +97,7 @@ export async function PUT(
  * DELETE: 特定のペルソナを削除します
  */
 export async function DELETE(
-  request: Request,
+  request: NextRequest, // ★修正点: Request を NextRequest に変更
   { params }: { params: { personaId: string } }
 ) {
   const session = await getServerSession(authOptions);
