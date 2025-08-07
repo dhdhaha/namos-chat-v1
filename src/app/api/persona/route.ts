@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'; // ★修正点: NextRequest をインポート
+import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/nextauth';
@@ -8,6 +8,7 @@ const prisma = new PrismaClient();
 /**
  * GET: ログイン中のユーザーが所有するペルソナ一覧を取得します
  */
+// ✅ Vercelビルドエラーを予防するため、未使用の引数を削除しました
 export async function GET() {
   const session = await getServerSession(authOptions);
 
@@ -50,7 +51,7 @@ export async function GET() {
 /**
  * POST: 新しいペルソナを作成します
  */
-export async function POST(request: NextRequest) { // ★修正点: Request を NextRequest に変更
+export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions);
 
   if (!session?.user?.id) {
@@ -85,10 +86,9 @@ export async function POST(request: NextRequest) { // ★修正点: Request を 
 }
 
 /**
- * ✅ PATCH関数をここに追加しました
  * PATCH: ユーザーの基本ペルソナを設定します
  */
-export async function PATCH(request: NextRequest) { // ★修正点: Request を NextRequest に変更
+export async function PATCH(request: NextRequest) {
   const session = await getServerSession(authOptions);
 
   if (!session?.user?.id) {
