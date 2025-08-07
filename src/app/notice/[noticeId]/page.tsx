@@ -1,144 +1,133 @@
 "use client";
 
-import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Edit, Trash2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
 
-const CATEGORIES = ['アップデート', '重要', 'イベント'];
+// お知らせ詳細データの型定義
+type NoticeDetail = {
+  id: number;
+  category: string;
+  title: string;
+  createdAt: string;
+  content: string;
+};
 
-// ✅ Vercelビルドエラーを解決するため、ページの引数構造を修正しました。
-export default function NoticeEditAdminPage({ params }: { params: { noticeId: string } }) {
+export default function NoticeDetailPage() {
   const router = useRouter();
-  const { noticeId } = params; // useParamsの代わりにpropsから直接取得
-  const { data: session, status } = useSession();
+  const params = useParams();
+  const noticeId = params.noticeId as string;
   
-  const [title, setTitle] = useState('');
-  const [category, setCategory] = useState(CATEGORIES[0]);
-  const [content, setContent] = useState('');
+  const { data: session } = useSession();
+  const [notice, setNotice] = useState<NoticeDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  // 権限チェックとデータ取得
   useEffect(() => {
-    if (status === 'loading') return;
-    if (!session || session.user?.role !== 'ADMIN') {
-      alert('アクセス権限がありません。');
-      router.push('/notice');
-      return;
+    if (noticeId) {
+      const fetchNoticeDetail = async () => {
+        try {
+          setIsLoading(true);
+          const response = await fetch(`/api/notice/${noticeId}`);
+          if (!response.ok) throw new Error('お知らせの読み込みに失敗しました。');
+          const data = await response.json();
+          setNotice(data);
+        } catch (error) {
+          console.error(error);
+          router.push('/notice');
+        } finally {
+          setIsLoading(false);
+        }
+      };
+      fetchNoticeDetail();
     }
+  }, [noticeId, router]);
 
-    const fetchNotice = async () => {
-      try {
-        const response = await fetch(`/api/notice/${noticeId}`);
-        if (!response.ok) throw new Error('お知らせ情報の読み込みに失敗しました。');
-        const data = await response.json();
-        setTitle(data.title);
-        setCategory(data.category);
-        setContent(data.content);
-      } catch (error) {
-        console.error(error);
-        alert((error as Error).message);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    
-    fetchNotice();
-  }, [session, status, router, noticeId]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (isSubmitting || !title || !content) return;
-    setIsSubmitting(true);
-
+  const handleDelete = async () => {
+    if (!window.confirm('このお知らせを本当に削除しますか？')) return;
+    setIsProcessing(true);
     try {
-      const response = await fetch(`/api/notice/${noticeId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, category, content }),
-      });
-
+      const response = await fetch(`/api/notice/${noticeId}`, { method: 'DELETE' });
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'お知らせの更新に失敗しました。');
+        throw new Error(errorData.error || '削除に失敗しました。');
       }
-
-      alert('お知らせが正常に更新されました。');
+      alert('お知らせが削除されました。');
       router.push('/notice');
-      router.refresh();
+      router.refresh(); 
     } catch (error) {
       console.error(error);
       alert((error as Error).message);
     } finally {
-      setIsSubmitting(false);
+      setIsProcessing(false);
     }
   };
-  
-  if (isLoading || status === 'loading') {
+
+  if (isLoading) {
     return <div className="min-h-screen bg-black text-white flex items-center justify-center">ローディング中...</div>;
   }
 
-  // 管理者でない場合は何も表示しない
-  if (session?.user?.role !== 'ADMIN') {
-    return null;
+  if (!notice) {
+    return <div className="min-h-screen bg-black text-white flex items-center justify-center">お知らせが見つかりません。</div>;
   }
+  
+  const getCategoryClass = (category: string) => {
+    switch (category) {
+      case 'アップデート': return 'text-green-400';
+      case '重要': return 'text-red-400';
+      case 'イベント': return 'text-blue-400';
+      default: return 'text-gray-400';
+    }
+  };
 
   return (
     <div className="bg-black min-h-screen text-white">
       <div className="mx-auto max-w-3xl">
-        <header className="flex items-center p-4 sticky top-0 bg-black/80 backdrop-blur-sm z-10 border-b border-gray-800">
-          <button onClick={() => router.push('/notice')}>
+        <header className="flex items-center justify-between p-4 sticky top-0 bg-black/80 backdrop-blur-sm z-10 border-b border-gray-800">
+          {/* ✅ 뒤로가기 버튼을 목록 페이지로 이동하는 Link로 변경하고 스타일을 추가했습니다. */}
+          <Link href="/notice" className="p-2 rounded-full hover:bg-gray-800 transition-colors cursor-pointer">
             <ArrowLeft />
-          </button>
-          <h1 className="font-bold text-lg mx-auto">お知らせ修正</h1>
+          </Link>
+          <h1 className="font-bold text-lg">お知らせ詳細</h1>
+          {session?.user?.role === 'ADMIN' ? (
+            <div className="flex items-center gap-2">
+              {/* ✅ 관리자 버튼에도 호버 효과와 스타일을 추가했습니다. */}
+              <button 
+                onClick={() => router.push(`/notice/admin/${noticeId}`)} 
+                disabled={isProcessing}
+                className="p-2 rounded-full hover:bg-gray-800 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <Edit className="w-5 h-5" />
+              </button>
+              <button 
+                onClick={handleDelete} 
+                disabled={isProcessing}
+                className="p-2 rounded-full hover:bg-gray-800 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <Trash2 className="w-5 h-5 text-red-500" />
+              </button>
+            </div>
+          ) : (
+            <div className="w-12 h-6" /> // 버튼 영역만큼 공간 확보
+          )}
         </header>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          <div>
-            <label htmlFor="category" className="block text-sm font-medium text-gray-300 mb-2">カテゴリー</label>
-            <select
-              id="category"
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-pink-500"
-            >
-              {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-            </select>
-          </div>
-          <div>
-            <label htmlFor="title" className="block text-sm font-medium text-gray-300 mb-2">タイトル</label>
-            <input
-              id="title"
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="タイトルを入力してください"
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-pink-500"
-              required
-            />
-          </div>
-          <div>
-            <label htmlFor="content" className="block text-sm font-medium text-gray-300 mb-2">内容</label>
-            <textarea
-              id="content"
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              placeholder="お知らせの内容を入力してください（HTMLタグ使用可能）"
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 h-60 resize-none focus:outline-none focus:ring-2 focus:ring-pink-500"
-              required
-            />
-          </div>
-          <div className="flex justify-end">
-            <button
-              type="submit"
-              disabled={isSubmitting || !title || !content}
-              className="bg-pink-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-pink-700 transition-colors disabled:bg-pink-800 disabled:cursor-not-allowed"
-            >
-              {isSubmitting ? '更新中...' : '更新'}
-            </button>
-          </div>
-        </form>
+        <main className="p-6">
+          <p className={`text-sm font-bold ${getCategoryClass(notice.category)}`}>
+            [{notice.category}]
+          </p>
+          <h2 className="text-2xl font-bold text-white mt-2">{notice.title}</h2>
+          <p className="text-xs text-gray-500 mt-3">
+            {new Date(notice.createdAt).toLocaleDateString('ja-JP')}
+          </p>
+          <div className="border-t border-gray-800 my-6"></div>
+          <article 
+            className="prose prose-invert prose-p:text-gray-300 prose-strong:text-pink-400"
+            dangerouslySetInnerHTML={{ __html: notice.content }}
+          />
+        </main>
       </div>
     </div>
   );
