@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { ArrowLeft, Edit, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -15,10 +15,10 @@ type NoticeDetail = {
   content: string;
 };
 
-export default function NoticeDetailPage() {
+// ✅ Vercelビルドエラーを解決するため、ページの引数構造を修正しました。
+export default function NoticeDetailPage({ params }: { params: { noticeId: string } }) {
   const router = useRouter();
-  const params = useParams();
-  const noticeId = params.noticeId as string;
+  const { noticeId } = params; // useParamsの代わりにpropsから直接取得
   
   const { data: session } = useSession();
   const [notice, setNotice] = useState<NoticeDetail | null>(null);
@@ -86,14 +86,12 @@ export default function NoticeDetailPage() {
     <div className="bg-black min-h-screen text-white">
       <div className="mx-auto max-w-3xl">
         <header className="flex items-center justify-between p-4 sticky top-0 bg-black/80 backdrop-blur-sm z-10 border-b border-gray-800">
-          {/* ✅ 뒤로가기 버튼을 목록 페이지로 이동하는 Link로 변경하고 스타일을 추가했습니다. */}
           <Link href="/notice" className="p-2 rounded-full hover:bg-gray-800 transition-colors cursor-pointer">
             <ArrowLeft />
           </Link>
           <h1 className="font-bold text-lg">お知らせ詳細</h1>
           {session?.user?.role === 'ADMIN' ? (
             <div className="flex items-center gap-2">
-              {/* ✅ 관리자 버튼에도 호버 효과와 스타일을 추가했습니다. */}
               <button 
                 onClick={() => router.push(`/notice/admin/${noticeId}`)} 
                 disabled={isProcessing}
@@ -110,7 +108,7 @@ export default function NoticeDetailPage() {
               </button>
             </div>
           ) : (
-            <div className="w-12 h-6" /> // 버튼 영역만큼 공간 확보
+            <div className="w-20" /> // ボタン領域만큼 공간 확보
           )}
         </header>
 
