@@ -1,15 +1,21 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, NextRequest } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-export async function GET(
-  _request: Request,
-  { params }: { params: { userId: string } }
-) {
-  const userId = parseInt(params.userId, 10);
+// ✅ Vercelビルドエラーを回避するため、URLから直接IDを解析するヘルパー関数
+function extractUserIdFromRequest(request: Request): number | null {
+  const url = new URL(request.url);
+  const idStr = url.pathname.split('/').pop();
+  if (!idStr) return null;
+  const parsedId = parseInt(idStr, 10);
+  return isNaN(parsedId) ? null : parsedId;
+}
+
+export async function GET(request: NextRequest) {
+  const userId = extractUserIdFromRequest(request);
   
-  if (isNaN(userId)) {
+  if (userId === null) {
     return NextResponse.json({ error: '無効なユーザーIDです。' }, { status: 400 });
   }
 
@@ -21,7 +27,7 @@ export async function GET(
         id: true,
         name: true,
         nickname: true,
-        email: true, // ✅ emailフィールドを追加しました
+        email: true,
         image_url: true,
         bio: true,
       }
