@@ -3,11 +3,12 @@ import { redirect } from "next/navigation";
 import { authOptions } from '@/lib/nextauth';
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
-import { prisma } from "@/lib/prisma"; 
+import { prisma } from "@/lib/prisma";
 import NoticeForm from "@/components/NoticeForm";
-import type { notices } from "@prisma/client"; 
+import type { notices } from "@prisma/client";
 
-interface Props {
+// Vercel 빌드 에러를 방지하기 위해 Props 타입을 별도의 인터페이스로 분리합니다.
+interface NoticeEditAdminPageProps {
   params: {
     noticeId: string;
   };
@@ -23,7 +24,7 @@ async function getNotice(id: number): Promise<notices | null> {
   }
 }
 
-export default async function NoticeEditAdminPage({ params }: Props) {
+export default async function NoticeEditAdminPage({ params }: NoticeEditAdminPageProps) {
   const session = await getServerSession(authOptions);
 
   if (session?.user?.role !== 'ADMIN') {
@@ -36,7 +37,7 @@ export default async function NoticeEditAdminPage({ params }: Props) {
   }
 
   const notice = await getNotice(noticeId);
-  
+
   if (!notice) {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
@@ -49,7 +50,7 @@ export default async function NoticeEditAdminPage({ params }: Props) {
     <div className="bg-black min-h-screen text-white">
       <div className="mx-auto max-w-3xl">
         <header className="flex items-center p-4 sticky top-0 bg-black/80 backdrop-blur-sm z-10 border-b border-gray-800">
-          <Link 
+          <Link
             href={`/notice/${noticeId}`}
             className="p-2 rounded-full hover:bg-gray-800 transition-colors duration-200 cursor-pointer"
           >
