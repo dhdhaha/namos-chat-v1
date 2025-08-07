@@ -1,20 +1,15 @@
 import type { Metadata } from "next";
-import { Geist } from "next/font/google";
+import { Inter } from "next/font/google"; // 에러 방지를 위해 Geist 대신 Inter 폰트를 사용합니다.
 import "./globals.css";
-// 1. AppShell과 Providersコンポーネントをインポートします
 import AppShell from "@/components/AppShell";
 import Providers from "@/components/Providers";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const inter = Inter({
   subsets: ["latin"],
+  variable: '--font-inter', // CSS 변수 이름을 폰트에 맞게 수정
 });
 
-// geistMonoフォントは現在使用されていないため、削除しました
-// const geistMono = Geist_Mono({ ... });
-
 export const metadata: Metadata = {
-  // サイトのタイトルと説明を適切に設定します
   title: "NAMOAI Chat",
   description: "AIキャラクターチャットサイト",
 };
@@ -25,14 +20,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    // ページの言語を日本語に設定します
     <html lang="ja">
-      <body className={`${geistSans.variable} antialiased`}>
-        {/* 2. NextAuthのセッション状態をアプリ全体で共有するためにProvidersでラップします */}
+      {/* 폰트 변수를 body에 적용합니다 */}
+      <body className={`${inter.variable} antialiased`}>
         <Providers>
-          {/* 3. 全てのページ内容({children})をAppShellコンポーネントでラップします。
-            これにより、AppShellがパスに応じてナビゲーションバーの表示・非表示を管理します。
-          */}
           <AppShell>{children}</AppShell>
         </Providers>
       </body>
