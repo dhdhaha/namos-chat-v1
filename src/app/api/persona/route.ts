@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server'; // ★修正点: NextRequest をインポート
 import { PrismaClient } from '@prisma/client';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/nextauth';
@@ -23,7 +23,7 @@ export async function GET() {
       where: { id: userId },
       select: {
         defaultPersonaId: true, // ユーザーの基本ペルソナID
-        personas: {            // ユーザーが作成したペルソナのリスト
+        personas: {           // ユーザーが作成したペルソナのリスト
           orderBy: {
             createdAt: 'asc',
           },
@@ -50,7 +50,7 @@ export async function GET() {
 /**
  * POST: 新しいペルソナを作成します
  */
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) { // ★修正点: Request を NextRequest に変更
   const session = await getServerSession(authOptions);
 
   if (!session?.user?.id) {
@@ -88,7 +88,7 @@ export async function POST(request: Request) {
  * ✅ PATCH関数をここに追加しました
  * PATCH: ユーザーの基本ペルソナを設定します
  */
-export async function PATCH(request: Request) {
+export async function PATCH(request: NextRequest) { // ★修正点: Request を NextRequest に変更
   const session = await getServerSession(authOptions);
 
   if (!session?.user?.id) {
