@@ -19,7 +19,7 @@ const vertex_ai = new VertexAI({
 });
 
 const generativeModel = vertex_ai.getGenerativeModel({
-  model: "gemini-1.5-pro-001",
+  model: "gemini-2.5-pro",
   safetySettings: [
     { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
     { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
