@@ -1,12 +1,15 @@
 import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
-import fs from 'fs/promises';
-import path from 'path';
+// ❌ サーバーレス環境ではローカル書き込み不可のため、fs/pathは使用しない
+// import fs from 'fs/promises';
+// import path from 'path';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/nextauth';
+import { createClient } from '@supabase/supabase-js';
 
 const prisma = new PrismaClient();
 
+// 画像メタデータの型
 type ImageMetaData = {
   url: string;
   keyword: string;
@@ -14,7 +17,7 @@ type ImageMetaData = {
   displayOrder: number;
 };
 
-// GET: ログインユーザーが作成したキャラクターのリストを取得する
+// GET: ログインユーザーが作成したキャラクター一覧を取得
 export async function GET() {
   const session = await getServerSession(authOptions);
 
@@ -40,42 +43,44 @@ export async function GET() {
     });
 
     return NextResponse.json(characters);
-
   } catch (error) {
     console.error('キャラクターリストの取得エラー:', error);
     return NextResponse.json({ error: 'サーバーエラーが発生しました。' }, { status: 500 });
   }
 }
 
-// POST: 新しいキャラクターを作成する
+// POST: 新しいキャラクターを作成する（画像はSupabase Storageへアップロード）
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
 
     const userIdString = formData.get('userId') as string;
-    const name = formData.get('name') as string;
-    const description = formData.get('description') as string || '';
-    const category = formData.get('category') as string || '';
-    const hashtagsString = formData.get('hashtags') as string || '[]';
-    const visibility = formData.get('visibility') as string || 'public';
-    const safetyFilterString = formData.get('safetyFilter') as string || 'true';
-    const systemTemplate = formData.get('systemTemplate') as string || '';
-    const detailSetting = formData.get('detailSetting') as string || '';
-    const firstSituation = formData.get('firstSituation') as string || '';
-    const firstMessage = formData.get('firstMessage') as string || '';
+    const name = (formData.get('name') as string) || '';
+    const description = (formData.get('description') as string) || '';
+    const category = (formData.get('category') as string) || '';
+    const hashtagsString = (formData.get('hashtags') as string) || '[]';
+    const visibility = (formData.get('visibility') as string) || 'public';
+    const safetyFilterString = (formData.get('safetyFilter') as string) || 'true';
+    const systemTemplate = (formData.get('systemTemplate') as string) || '';
+    const detailSetting = (formData.get('detailSetting') as string) || '';
+    const firstSituation = (formData.get('firstSituation') as string) || '';
+    const firstMessage = (formData.get('firstMessage') as string) || '';
 
+    // 認証チェック
     if (!userIdString) {
-      return NextResponse.json({ message: "認証情報が見つかりません。再度ログインしてください。" }, { status: 401 });
+      return NextResponse.json({ message: '認証情報が見つかりません。再度ログインしてください。' }, { status: 401 });
     }
     const userId = parseInt(userIdString, 10);
     if (isNaN(userId)) {
-      return NextResponse.json({ message: "無効なユーザーIDです。" }, { status: 400 });
-    }
-    
-    if (!name || !name.trim()) {
-      return NextResponse.json({ message: "キャラクターの名前は必須項目です。" }, { status: 400 });
+      return NextResponse.json({ message: '無効なユーザーIDです。' }, { status: 400 });
     }
 
+    // 必須入力チェック
+    if (!name.trim()) {
+      return NextResponse.json({ message: 'キャラクターの名前は必須項目です。' }, { status: 400 });
+    }
+
+    // 各種パース
     const safetyFilter = safetyFilterString === 'true';
     let hashtags: string[] = [];
     try {
@@ -83,27 +88,65 @@ export async function POST(request: Request) {
     } catch {
       hashtags = [];
     }
-    
+
+    // 画像枚数
     const imageCountString = formData.get('imageCount') as string;
-    const imageCount = imageCountString ? parseInt(imageCountString) : 0;
+    const imageCount = imageCountString ? parseInt(imageCountString, 10) : 0;
+
+    // ---- Supabase Storage クライアント初期化 ----
+    // ※ service_roleキーはサーバー環境変数にのみ設定し、クライアントには絶対に露出しないこと
+    const supabaseUrl = process.env.SUPABASE_URL!;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+    const bucket = process.env.SUPABASE_STORAGE_BUCKET || 'characters';
+    if (!supabaseUrl || !serviceRoleKey) {
+      console.error('環境変数が不足しています: SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY');
+      return NextResponse.json({ message: 'サーバー設定エラー（Storage接続情報不足）' }, { status: 500 });
+    }
+    const sb = createClient(supabaseUrl, serviceRoleKey);
+
+    // Storageにアップロードした画像のメタを蓄積
     const imageMetas: ImageMetaData[] = [];
 
     for (let i = 0; i < imageCount; i++) {
       const file = formData.get(`image_${i}`) as File | null;
-      const keyword = formData.get(`keyword_${i}`) as string || '';
-      
-      if (file && file.size > 0) {
-        const buffer = Buffer.from(await file.arrayBuffer());
-        const filename = `${Date.now()}-${file.name.replace(/\s/g, '_')}`;
-        const savePath = path.join(process.cwd(), 'public/uploads', filename);
-        await fs.mkdir(path.dirname(savePath), { recursive: true });
-        await fs.writeFile(savePath, buffer);
-        const imageUrl = `/uploads/${filename}`;
-        imageMetas.push({ url: imageUrl, keyword, isMain: i === 0, displayOrder: i });
+      const keyword = (formData.get(`keyword_${i}`) as string) || '';
+
+      if (!file || file.size === 0) continue;
+
+      // 拡張子を推定（なければpng）
+      const ext = (file.type?.split('/')[1] || 'png').replace(/[^a-z0-9]/gi, '');
+      const safeName = (file.name || `image.${ext}`).replace(/\s/g, '_');
+
+      // 衝突回避のための一意なキー
+      const objectKey = `uploads/${Date.now()}-${i}-${safeName}`;
+
+      // File -> ArrayBuffer -> Buffer に変換してアップロード
+      const arrayBuffer = await file.arrayBuffer();
+      const { error: uploadErr } = await sb.storage
+        .from(bucket)
+        .upload(objectKey, Buffer.from(arrayBuffer), {
+          contentType: file.type || 'application/octet-stream',
+          upsert: false, // 同名ファイルがあればエラー
+        });
+
+      if (uploadErr) {
+        console.error('Supabase Storageへのアップロード失敗:', uploadErr);
+        return NextResponse.json({ message: '画像アップロードに失敗しました。' }, { status: 500 });
       }
+
+      // 公開URLを取得（バケットが公開設定であること）
+      const { data: pub } = sb.storage.from(bucket).getPublicUrl(objectKey);
+      const imageUrl = pub.publicUrl;
+
+      imageMetas.push({
+        url: imageUrl,
+        keyword,
+        isMain: i === 0,
+        displayOrder: i,
+      });
     }
-    
-    // ▼▼▼ 変更点 1: `users` を `author` に修正 ▼▼▼
+
+    // ▼ 作成データ（authorリレーションでユーザーに紐づけ）
     const characterData = {
       name,
       description,
@@ -115,21 +158,18 @@ export async function POST(request: Request) {
       category,
       hashtags,
       detailSetting,
-      author: { // `users`ではなく`author`を使用
-        connect: {
-          id: userId,
-        },
+      author: {
+        connect: { id: userId },
       },
     };
 
+    // トランザクションでキャラクター + 画像を作成
     const newCharacter = await prisma.$transaction(async (tx) => {
-      const character = await tx.characters.create({
-        data: characterData,
-      });
+      const character = await tx.characters.create({ data: characterData });
 
       if (imageMetas.length > 0) {
         await tx.character_images.createMany({
-          data: imageMetas.map(meta => ({
+          data: imageMetas.map((meta) => ({
             characterId: character.id,
             imageUrl: meta.url,
             keyword: meta.keyword,
@@ -141,23 +181,19 @@ export async function POST(request: Request) {
 
       return await tx.characters.findUnique({
         where: { id: character.id },
-        include: {
-          characterImages: true,
-        },
+        include: { characterImages: true },
       });
     });
 
-    return NextResponse.json({ 
-      message: 'キャラクターの作成に成功しました！', 
-      character: newCharacter 
-    }, { status: 201 });
-
+    return NextResponse.json(
+      { message: 'キャラクターの作成に成功しました！', character: newCharacter },
+      { status: 201 }
+    );
   } catch (error) {
-    // ▼▼▼ 変更点 2: console.errorの韓国語を日本語に修正 ▼▼▼
-    console.error("--- ❌ [致命的なエラー発生] サーバーエラー:", error);
-    if (error instanceof Error) {
-        return NextResponse.json({ message: error.message }, { status: 500 });
-    }
-    return NextResponse.json({ message: '不明なサーバーエラーが発生しました' }, { status: 500 });
+    console.error('--- ❌ [致命的なエラー発生] サーバーエラー:', error);
+    return NextResponse.json(
+      { message: error instanceof Error ? error.message : '不明なサーバーエラーが発生しました' },
+      { status: 500 }
+    );
   }
 }
