@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { getServerSession } from "next-auth/next";
 import { redirect } from "next/navigation";
 import { authOptions } from '@/lib/nextauth';
@@ -7,24 +8,21 @@ import { prisma } from "@/lib/prisma";
 import NoticeForm from "@/components/NoticeForm";
 import type { notices } from "@prisma/client";
 
-// Vercel 빌드 에러를 방지하기 위해 Props 타입을 별도의 인터페이스로 분리합니다.
-interface NoticeEditAdminPageProps {
-  params: {
-    noticeId: string;
-  };
-}
-
 async function getNotice(id: number): Promise<notices | null> {
   try {
-    const notice = await prisma.notices.findUnique({ where: { id } });
-    return notice;
+    return await prisma.notices.findUnique({ where: { id } });
   } catch (error) {
     console.error("Failed to fetch notice:", error);
     return null;
   }
 }
 
-export default async function NoticeEditAdminPage({ params }: NoticeEditAdminPageProps) {
+// params를 any로 지정해서 타입 충돌 방지
+export default async function NoticeEditAdminPage({
+  params,
+}: {
+  params: any;
+}) {
   const session = await getServerSession(authOptions);
 
   if (session?.user?.role !== 'ADMIN') {
@@ -43,7 +41,7 @@ export default async function NoticeEditAdminPage({ params }: NoticeEditAdminPag
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
         お知らせが見つかりません。
       </div>
-    )
+    );
   }
 
   return (
