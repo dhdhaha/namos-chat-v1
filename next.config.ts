@@ -9,6 +9,12 @@ const nextConfig: NextConfig = {
         port: '',
         pathname: '/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'drifsxbtlkulgapaokno.supabase.co', // Supabase 도메인 추가
+        port: '',
+        pathname: '/**',
+      },
     ],
   },
 };
