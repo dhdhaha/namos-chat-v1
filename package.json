@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "rm -rf .next && prisma generate && next build",
+    "build": "node -e \"require('fs').writeFileSync('./gcp-credentials.json', Buffer.from(process.env.GOOGLE_CREDENTIALS_BASE64 || '', 'base64'))\" && rm -rf .next && prisma generate && next build",
     "start": "next start",
     "lint": "next lint"
   },
