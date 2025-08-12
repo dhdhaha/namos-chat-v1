@@ -47,3 +47,12 @@ next-env.d.ts
 # Google Cloud 인증 정보 파일
 gemini-credentials.jsongcp/sa.json
 secrets/
+
+
+gcp/sa.json
+gemini-credentials.json
+secrets/runtime.json
+# secrets
+ gcp/sa.json
+ gemini-credentials.json
+ secrets/runtime.json
