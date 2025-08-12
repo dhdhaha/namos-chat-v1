@@ -1,8 +1,9 @@
+// scripts/gsm-fetch.mjs
 import fs from "node:fs";
 import path from "node:path";
 import { SecretManagerServiceClient } from "@google-cloud/secret-manager";
 
-// 1) SA 키(JSON)를 파일로 저장 (Build-only env 사용)
+// 1) 서비스 계정 키(JSON) 파일로 저장
 const saDir = path.join(process.cwd(), "gcp");
 const saPath = path.join(saDir, "sa.json");
 fs.mkdirSync(saDir, { recursive: true });
@@ -12,15 +13,24 @@ if (!saJson) {
   console.error("❌ GOOGLE_APPLICATION_CREDENTIALS_JSON 없음");
   process.exit(1);
 }
+// (옵션) 최소 유효성 검사
+try {
+  const j = JSON.parse(saJson);
+  if (j.type !== "service_account") throw new Error("type != service_account");
+} catch (e) {
+  console.error("❌ 서비스 계정 키 JSON 파싱 실패. 정확한 JSON을 넣었는지 확인하세요.");
+  throw e;
+}
 fs.writeFileSync(saPath, saJson, "utf8");
 
 // 2) GSM 클라이언트 (ADC)
 process.env.GOOGLE_APPLICATION_CREDENTIALS = saPath;
 const client = new SecretManagerServiceClient();
 
-const projectId = process.env.GCP_PROJECT_ID;
+// ✅ 여기 수정: 두 이름 모두 지원
+const projectId = process.env.GOOGLE_PROJECT_ID || process.env.GCP_PROJECT_ID;
 if (!projectId) {
-  console.error("❌ GCP_PROJECT_ID 없음");
+  console.error("❌ GOOGLE_PROJECT_ID (또는 GCP_PROJECT_ID) 없음");
   process.exit(1);
 }
 
