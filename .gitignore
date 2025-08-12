@@ -45,4 +45,5 @@ next-env.d.ts
 /src/generated/prisma
 
 # Google Cloud 인증 정보 파일
-gemini-credentials.json
+gemini-credentials.jsongcp/sa.json
+secrets/
