@@ -66,3 +66,6 @@ for (const name of names) {
 
 fs.writeFileSync(path.join(outDir, "runtime.json"), JSON.stringify(bag, null, 2));
 console.log("✅ wrote secrets/runtime.json");
+
+// scripts/gsm-fetch.mjs 끝부분에
+console.log("SA path:", saPath, "exists:", fs.existsSync(saPath));

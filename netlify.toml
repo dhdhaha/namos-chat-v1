@@ -1,2 +1,2 @@
 [functions]
-  included_files = ["secrets/**"]
+  included_files = ["gcp/sa.json", "secrets/**"]
